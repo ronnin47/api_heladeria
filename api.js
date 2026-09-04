@@ -94,23 +94,46 @@ app.get('/usuarios', async (req, res) => {
 });
 
 
+// Endpoint de login
+app.post('/login', async (req, res) => {
+    try {
+        const { email, pass } = req.body;
 
-/*
+        if (!email || !pass) {
+            return res.status(400).json({
+                error: 'Email y contraseña son obligatorios'
+            });
+        }
 
-const consulta= async()=>{
+        const result = await pool.query(
+            'SELECT * FROM usuarios WHERE email = $1 AND pass = $2',
+            [email, pass]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(401).json({
+                error: 'Email o contraseña incorrectos'
+            });
+        }
+
+        const usuario = result.rows[0];
+
+        res.json({
+            login: true,
+            usuario: usuario
+        });
+
+    } catch (error) {
+        console.error('❌ Error en login:', error);
+
+        res.status(500).json({
+            error: 'Error interno del servidor'
+        });
+    }
+});
 
 
-  const response = await fetch('http://localhost:3000/usuarios');
 
-const usuarios = await response.json();
-
-console.log(usuarios);
-
-}
-
-
-consulta();
-*/
 
 
 app.listen(PORT, () => {
