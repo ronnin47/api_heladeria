@@ -6,7 +6,7 @@ const bodyParser = require('body-parser');
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
-
+require('dotenv').config();
 
 
 const app = express();
@@ -30,17 +30,17 @@ console.trace("🚨 server.js ejecutado");
 
 //base de datos en SupaBase
 const pool = new Pool({
-    user: 'postgres',
-    host: 'db.fhjdokgyapwizzowbyya.supabase.co',
-    database: 'postgres',
-    password: 'auL6VvSMuBCEvRYa',
-    port: 5432,
+    user: process.env.DB_USER,
+    host: process.env.DB_HOST,
+    database: process.env.DB_NAME,
+    password: process.env.DB_PASSWORD,
+    port: Number(process.env.DB_PORT),
     ssl: {
         rejectUnauthorized: false
     }
 });
 
-
+module.exports = pool;
 
 app.get('/', (req, res) => {
   res.send('Servidor funcionando y conectado a SupaBase.');
