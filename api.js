@@ -102,7 +102,7 @@ app.get('/usuarios', async (req, res) => {
 });
 
 
-// Endpoint de login
+// Endpoint de login ok!
 app.post('/login', async (req, res) => {
     try {
         const { email, pass } = req.body;
@@ -163,7 +163,7 @@ app.get('/productos', async (req, res) => {
 });
 
 
-//endpoint para la funcion de la pantalla de pedidos de la aplicacion de cobrar y enviar a la cocina
+//ok!
 app.post('/insertPedido', async (req, res) => {
 
     const {
@@ -402,6 +402,114 @@ app.post('/insertPedido', async (req, res) => {
     }
 });
 
+
+// Endpoint para obtener los pedidos activos
+app.get('/pedidosActivos', async (req, res) => {
+
+    const client = await pool.connect();
+
+    try {
+
+        const query = `
+            SELECT
+                v.id_venta,
+                v.fecha,
+                v.total,
+                v.tipo_entrega,
+                v.estado,
+                v.medio_pago,
+
+                f.nombre AS cliente_nombre,
+
+                e.direccion,
+                e.estado AS estado_entrega,
+
+                COALESCE(
+                    json_agg(
+                        DISTINCT jsonb_build_object(
+                            'id_detalle', dv.id_detalle,
+                            'id_producto', dv.id_producto,
+                            'id_vc', dv.id_vc,
+                            'cantidad', dv.cantidad,
+                            'precio_unitario', dv.precio_unitario,
+                            'subtotal', dv.subtotal,
+                            'producto_nombre', p.nombre,
+                            'producto_tipo', p.tipo,
+                            'vc_tipo', vc.tipo,
+                            'vc_descripcion', vc.descripcion,
+                            'sabores',
+                            COALESCE(
+                                (
+                                    SELECT json_agg(
+                                        jsonb_build_object(
+                                            'id_sabor', s.id_sabor,
+                                            'nombre', s.nombre
+                                        )
+                                    )
+                                    FROM detalles_ventas_sabores dvs
+                                    INNER JOIN sabores s
+                                        ON s.id_sabor = dvs.id_sabor
+                                    WHERE dvs.id_detalle = dv.id_detalle
+                                ),
+                                '[]'::json
+                            )
+                        )
+                    ) FILTER (WHERE dv.id_detalle IS NOT NULL),
+                    '[]'::json
+                ) AS productos
+
+            FROM ventas v
+
+            LEFT JOIN facturas f
+                ON f.id_venta = v.id_venta
+
+            LEFT JOIN entregas e
+                ON e.id_venta = v.id_venta
+
+            LEFT JOIN detalles_ventas dv
+                ON dv.id_venta = v.id_venta
+
+            LEFT JOIN productos p
+                ON p.id_producto = dv.id_producto
+
+            LEFT JOIN vasitos_cucuruchos vc
+                ON vc.id_vc = dv.id_vc
+
+            WHERE v.estado <> 'Entregado'
+
+            GROUP BY
+                v.id_venta,
+                v.fecha,
+                v.total,
+                v.tipo_entrega,
+                v.estado,
+                v.medio_pago,
+                f.nombre,
+                e.direccion,
+                e.estado
+
+            ORDER BY v.id_venta DESC;
+        `;
+
+        const resultado = await client.query(query);
+
+        res.status(200).json(resultado.rows);
+
+    } catch (error) {
+
+        console.error(
+            '❌ Error al obtener pedidos activos:',
+            error
+        );
+
+        res.status(500).json({
+            error: 'Error al obtener los pedidos activos'
+        });
+
+    } finally {
+        client.release();
+    }
+});
 
 
 app.listen(PORT, () => {
