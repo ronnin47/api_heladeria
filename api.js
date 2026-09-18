@@ -404,6 +404,79 @@ app.post('/insertPedido', async (req, res) => {
 
 
 
+
+//-----------DEV_BRIAN----------------
+// Obtener pedidos para la pantalla de Producción
+app.get('/pedidos/produccion', async (req, res) => {
+    try {
+
+        const result = await pool.query(`
+            SELECT
+                v.id_venta,
+                v.fecha,
+                v.tipo_entrega,
+                v.estado,
+                f.nombre AS cliente_nombre,
+
+                dv.id_detalle,
+                dv.id_producto,
+                p.nombre AS producto_nombre,
+                dv.cantidad,
+
+                COALESCE(
+                    (
+                        SELECT json_agg(s.nombre)
+                        FROM detalles_ventas_sabores dvs
+                        INNER JOIN sabores s
+                            ON s.id_sabor = dvs.id_sabor
+                        WHERE dvs.id_detalle = dv.id_detalle
+                    ),
+                    '[]'::json
+                ) AS sabores
+
+            FROM ventas v
+
+            INNER JOIN facturas f
+                ON f.id_venta = v.id_venta
+
+            INNER JOIN detalles_ventas dv
+                ON dv.id_venta = v.id_venta
+
+            INNER JOIN productos p
+                ON p.id_producto = dv.id_producto
+
+            WHERE v.estado IN (
+                'Pedido tomado',
+                'En preparación',
+                'Listo'
+            )
+
+            ORDER BY v.fecha ASC;
+        `);
+
+        res.json(result.rows);
+
+    } catch (error) {
+
+        console.error(
+            '❌ Error al obtener pedidos de producción:',
+            error
+        );
+
+        res.status(500).json({
+            error: 'Error al obtener los pedidos de producción'
+        });
+    }
+});
+
+
+
+
+
+
+
+
+
 app.listen(PORT, () => {
     console.log(`🟢 Servidor corriendo en puerto ${PORT}`);
 });
