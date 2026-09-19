@@ -471,9 +471,39 @@ app.get('/pedidos/produccion', async (req, res) => {
 
 
 
+// UPDATEAR ESTADO EN LA TABLA DE VENTAS
+app.put('/pedidos/estado', async (req, res) => {
+    try {
 
+        const { id_venta, estado } = req.body;
 
+        const result = await pool.query(`
+            UPDATE ventas
+            SET estado = $1
+            WHERE id_venta = $2
+            RETURNING id_venta, estado;
+        `, [estado, id_venta]);
 
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: 'No se encontró el pedido'
+            });
+        }
+
+        res.json(result.rows[0]);
+
+    } catch (error) {
+
+        console.error(
+            '❌ Error al cambiar estado del pedido:',
+            error
+        );
+
+        res.status(500).json({
+            error: 'Error al cambiar estado del pedido'
+        });
+    }
+});
 
 
 app.listen(PORT, () => {
