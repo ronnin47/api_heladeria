@@ -472,7 +472,7 @@ app.get('/pedidos/produccion', async (req, res) => {
 
 
 // UPDATEAR ESTADO EN LA TABLA DE VENTAS
-app.put('/pedidos/estado', async (req, res) => {
+app.put('/updatePedidos/estado', async (req, res) => {
     try {
 
         const { id_venta, estado } = req.body;
