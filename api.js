@@ -102,7 +102,7 @@ app.get('/usuarios', async (req, res) => {
 });
 
 
-// Endpoint de login ok!
+// Endpoint de login
 app.post('/login', async (req, res) => {
     try {
         const { email, pass } = req.body;
@@ -163,7 +163,7 @@ app.get('/productos', async (req, res) => {
 });
 
 
-//ok!
+//endpoint para la funcion de la pantalla de pedidos de la aplicacion de cobrar y enviar a la cocina
 app.post('/insertPedido', async (req, res) => {
 
     const {
@@ -403,111 +403,105 @@ app.post('/insertPedido', async (req, res) => {
 });
 
 
-// Endpoint para obtener los pedidos activos
-app.get('/pedidosActivos', async (req, res) => {
 
-    const client = await pool.connect();
 
+//-----------DEV_BRIAN----------------
+// Obtener pedidos para la pantalla de Producción
+app.get('/pedidos/produccion', async (req, res) => {
     try {
 
-        const query = `
+        const result = await pool.query(`
             SELECT
                 v.id_venta,
                 v.fecha,
-                v.total,
                 v.tipo_entrega,
                 v.estado,
-                v.medio_pago,
-
                 f.nombre AS cliente_nombre,
 
-                e.direccion,
-                e.estado AS estado_entrega,
+                dv.id_detalle,
+                dv.id_producto,
+                p.nombre AS producto_nombre,
+                dv.cantidad,
 
                 COALESCE(
-                    json_agg(
-                        DISTINCT jsonb_build_object(
-                            'id_detalle', dv.id_detalle,
-                            'id_producto', dv.id_producto,
-                            'id_vc', dv.id_vc,
-                            'cantidad', dv.cantidad,
-                            'precio_unitario', dv.precio_unitario,
-                            'subtotal', dv.subtotal,
-                            'producto_nombre', p.nombre,
-                            'producto_tipo', p.tipo,
-                            'vc_tipo', vc.tipo,
-                            'vc_descripcion', vc.descripcion,
-                            'sabores',
-                            COALESCE(
-                                (
-                                    SELECT json_agg(
-                                        jsonb_build_object(
-                                            'id_sabor', s.id_sabor,
-                                            'nombre', s.nombre
-                                        )
-                                    )
-                                    FROM detalles_ventas_sabores dvs
-                                    INNER JOIN sabores s
-                                        ON s.id_sabor = dvs.id_sabor
-                                    WHERE dvs.id_detalle = dv.id_detalle
-                                ),
-                                '[]'::json
-                            )
-                        )
-                    ) FILTER (WHERE dv.id_detalle IS NOT NULL),
+                    (
+                        SELECT json_agg(s.nombre)
+                        FROM detalles_ventas_sabores dvs
+                        INNER JOIN sabores s
+                            ON s.id_sabor = dvs.id_sabor
+                        WHERE dvs.id_detalle = dv.id_detalle
+                    ),
                     '[]'::json
-                ) AS productos
+                ) AS sabores
 
             FROM ventas v
 
-            LEFT JOIN facturas f
+            INNER JOIN facturas f
                 ON f.id_venta = v.id_venta
 
-            LEFT JOIN entregas e
-                ON e.id_venta = v.id_venta
-
-            LEFT JOIN detalles_ventas dv
+            INNER JOIN detalles_ventas dv
                 ON dv.id_venta = v.id_venta
 
-            LEFT JOIN productos p
+            INNER JOIN productos p
                 ON p.id_producto = dv.id_producto
 
-            LEFT JOIN vasitos_cucuruchos vc
-                ON vc.id_vc = dv.id_vc
+            WHERE v.estado IN (
+                'Pedido tomado',
+                'En preparación',
+                'Listo'
+            )
 
-            WHERE v.estado <> 'Entregado'
+            ORDER BY v.fecha ASC;
+        `);
 
-            GROUP BY
-                v.id_venta,
-                v.fecha,
-                v.total,
-                v.tipo_entrega,
-                v.estado,
-                v.medio_pago,
-                f.nombre,
-                e.direccion,
-                e.estado
-
-            ORDER BY v.id_venta DESC;
-        `;
-
-        const resultado = await client.query(query);
-
-        res.status(200).json(resultado.rows);
+        res.json(result.rows);
 
     } catch (error) {
 
         console.error(
-            '❌ Error al obtener pedidos activos:',
+            '❌ Error al obtener pedidos de producción:',
             error
         );
 
         res.status(500).json({
-            error: 'Error al obtener los pedidos activos'
+            error: 'Error al obtener los pedidos de producción'
         });
+    }
+});
 
-    } finally {
-        client.release();
+
+
+// UPDATEAR ESTADO EN LA TABLA DE VENTAS
+app.put('/updatePedidos/estado', async (req, res) => {
+    try {
+
+        const { id_venta, estado } = req.body;
+
+        const result = await pool.query(`
+            UPDATE ventas
+            SET estado = $1
+            WHERE id_venta = $2
+            RETURNING id_venta, estado;
+        `, [estado, id_venta]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: 'No se encontró el pedido'
+            });
+        }
+
+        res.json(result.rows[0]);
+
+    } catch (error) {
+
+        console.error(
+            '❌ Error al cambiar estado del pedido:',
+            error
+        );
+
+        res.status(500).json({
+            error: 'Error al cambiar estado del pedido'
+        });
     }
 });
 
