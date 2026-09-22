@@ -1008,7 +1008,6 @@ app.listen(PORT, async () => {
 
 // ==================== ADMINISTRADOR ====================
 // Endpoints exclusivos del UserControl de Administrador.
-// No modifican el contrato de los endpoints existentes.
 
 app.get('/admin/resumen', async (req, res) => {
     try {
