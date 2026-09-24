@@ -7,10 +7,9 @@ const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
-
-
 const app = express();
 const PORT = process.env.PORT || 3000;
+const server = http.createServer(app);
 
 app.use(cors());
 
@@ -18,6 +17,16 @@ app.use(express.json({ limit: '50mb' })); // para parsear JSON
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 
+//****************** */ Configuración de Socket.IO ********************
+const { Server } = require('socket.io');
+
+const io = new Server(server, {
+    cors: {
+        origin: '*',
+        methods: ['GET', 'POST']
+    }
+});
+//**************************************************** 
 // Servir la carpeta uploads como pública
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -41,6 +50,24 @@ const pool = new Pool({
 });
 
 module.exports = pool;
+
+
+
+
+
+
+//eventos de io
+io.on('connection', (socket) => {
+    console.log('🟢 Cliente conectado:', socket.id);
+
+    socket.on('disconnect', () => {
+        console.log('🔴 Cliente desconectado:', socket.id);
+    });
+});
+
+
+
+
 
 app.get('/', (req, res) => {
   res.send('Servidor funcionando y conectado a SupaBase.');
@@ -473,6 +500,8 @@ app.post('/insertPedido', async (req, res) => {
         `;
 
 
+        //
+
         const ventaResult = await client.query(
             insertVentaQuery,
             [
@@ -632,6 +661,16 @@ app.post('/insertPedido', async (req, res) => {
         // 6. Confirmar todas las operaciones
         await client.query('COMMIT');
 
+
+
+        console.log(
+    '📢 SOCKET: pedido_creado disparado. ID venta:',
+    nuevaVentaId
+);
+        // Avisar a todos los clientes que se creó un pedido
+io.emit('pedido_creado', {
+    id_venta: nuevaVentaId
+});
 
         res.status(201).json({
             mensaje: 'Pedido creado exitosamente',
@@ -1005,6 +1044,8 @@ app.listen(PORT, async () => {
 });
 
 */
-app.listen(PORT, () => {
+
+// AL FINAL DEL ARCHIVO
+server.listen(PORT, () => {
     console.log(`🟢 Servidor corriendo en puerto ${PORT}`);
 });
