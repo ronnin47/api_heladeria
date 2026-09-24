@@ -1056,6 +1056,224 @@ app.listen(PORT, async () => {
 });
 
 */
+// ==================== ADMINISTRADOR ====================
+// Endpoints exclusivos del UserControl de Administrador.
+// No modifican el contrato de los endpoints existentes.
+
+app.get('/admin/resumen', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT
+                COUNT(*) FILTER (WHERE fecha >= CURRENT_DATE AND fecha < CURRENT_DATE + INTERVAL '1 day')::int AS pedidos_hoy,
+                COALESCE(SUM(total) FILTER (WHERE fecha >= CURRENT_DATE AND fecha < CURRENT_DATE + INTERVAL '1 day'), 0) AS ventas_dia,
+                COUNT(*) FILTER (WHERE estado <> 'Entregado')::int AS pedidos_curso,
+                COALESCE(AVG(total) FILTER (WHERE fecha >= CURRENT_DATE AND fecha < CURRENT_DATE + INTERVAL '1 day'), 0) AS ticket_promedio,
+                COUNT(*) FILTER (WHERE estado = 'Pedido tomado')::int AS pedido_tomado,
+                COUNT(*) FILTER (WHERE estado = 'En preparación')::int AS preparacion,
+                COUNT(*) FILTER (WHERE estado = 'Listo')::int AS listos,
+                COUNT(*) FILTER (WHERE estado = 'En camino')::int AS camino,
+                COUNT(*) FILTER (WHERE estado = 'Entregado' AND fecha >= CURRENT_DATE AND fecha < CURRENT_DATE + INTERVAL '1 day')::int AS completados
+            FROM ventas;
+        `);
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Error en resumen de administrador:', error);
+        res.status(500).json({ error: 'Error al obtener el resumen' });
+    }
+});
+
+app.get('/admin/clientes', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT v.id_venta, v.fecha, f.nombre, e.telefono, e.direccion
+            FROM ventas v
+            LEFT JOIN facturas f ON f.id_venta = v.id_venta
+            LEFT JOIN entregas e ON e.id_venta = v.id_venta
+            WHERE f.nombre IS NOT NULL OR e.telefono IS NOT NULL OR e.direccion IS NOT NULL
+            ORDER BY v.id_venta DESC;
+        `);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error al obtener clientes para administrador:', error);
+        res.status(500).json({ error: 'Error al obtener clientes' });
+    }
+});
+
+app.put('/admin/clientes/:idVenta', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const idVenta = Number(req.params.idVenta);
+        const { nombre, telefono, direccion } = req.body;
+        if (!idVenta || !nombre) return res.status(400).json({ error: 'Venta y nombre son obligatorios' });
+
+        await client.query('BEGIN');
+        const venta = await client.query('SELECT id_venta FROM ventas WHERE id_venta = $1', [idVenta]);
+        if (venta.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Venta no encontrada' });
+        }
+
+        await client.query('UPDATE facturas SET nombre = $1 WHERE id_venta = $2', [nombre, idVenta]);
+        await client.query('UPDATE entregas SET telefono = $1, direccion = $2 WHERE id_venta = $3', [telefono || null, direccion || null, idVenta]);
+        await client.query('COMMIT');
+        res.json({ ok: true });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error al modificar datos del cliente:', error);
+        res.status(500).json({ error: 'Error al modificar los datos del cliente' });
+    } finally {
+        client.release();
+    }
+});
+
+app.get('/admin/proveedores', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT id_proveedor, nombre, telefono, direccion FROM proveedores ORDER BY id_proveedor ASC');
+        res.json(result.rows);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al obtener proveedores' });
+    }
+});
+
+app.post('/admin/proveedores', async (req, res) => {
+    try {
+        const { nombre, telefono, direccion } = req.body;
+        if (!nombre) return res.status(400).json({ error: 'El nombre es obligatorio' });
+        const result = await pool.query(
+            'INSERT INTO proveedores (nombre, telefono, direccion) VALUES ($1, $2, $3) RETURNING id_proveedor, nombre, telefono, direccion',
+            [nombre, telefono || null, direccion || null]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al agregar proveedor' });
+    }
+});
+
+app.put('/admin/proveedores/:id', async (req, res) => {
+    try {
+        const { nombre, telefono, direccion } = req.body;
+        const result = await pool.query(
+            'UPDATE proveedores SET nombre=$1, telefono=$2, direccion=$3 WHERE id_proveedor=$4 RETURNING id_proveedor, nombre, telefono, direccion',
+            [nombre, telefono || null, direccion || null, req.params.id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Proveedor no encontrado' });
+        res.json(result.rows[0]);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al modificar proveedor' });
+    }
+});
+
+app.delete('/admin/proveedores/:id', async (req, res) => {
+    try {
+        const result = await pool.query('DELETE FROM proveedores WHERE id_proveedor=$1 RETURNING id_proveedor', [req.params.id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Proveedor no encontrado' });
+        res.json({ ok: true });
+    } catch (error) {
+        if (error.code === '23503') return res.status(409).json({ error: 'No se puede eliminar: el proveedor está siendo utilizado por otros registros' });
+        res.status(500).json({ error: 'Error al eliminar proveedor' });
+    }
+});
+
+app.get('/admin/usuarios', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT id, nombre, apellido, email, pass, status, imagen FROM usuarios ORDER BY id ASC');
+        res.json(result.rows);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al obtener usuarios' });
+    }
+});
+
+app.post('/admin/usuarios', async (req, res) => {
+    try {
+        const { nombre, apellido, email, pass, status, imagen } = req.body;
+        if (!nombre || !apellido || !email || !pass || !status) return res.status(400).json({ error: 'Nombre, apellido, email, contraseña y estado son obligatorios' });
+        const result = await pool.query(
+            'INSERT INTO usuarios (nombre, apellido, email, pass, status, imagen) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, nombre, apellido, email, pass, status, imagen',
+            [nombre, apellido, email, pass, status, imagen || null]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        if (error.code === '23505') return res.status(409).json({ error: 'Ya existe un usuario con esos datos únicos' });
+        res.status(500).json({ error: 'Error al agregar usuario' });
+    }
+});
+
+app.put('/admin/usuarios/:id', async (req, res) => {
+    try {
+        const { nombre, apellido, email, pass, status, imagen } = req.body;
+        const result = await pool.query(
+            'UPDATE usuarios SET nombre=$1, apellido=$2, email=$3, pass=$4, status=$5, imagen=$6 WHERE id=$7 RETURNING id, nombre, apellido, email, pass, status, imagen',
+            [nombre, apellido, email, pass, status, imagen || null, req.params.id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
+        res.json(result.rows[0]);
+    } catch (error) {
+        if (error.code === '23505') return res.status(409).json({ error: 'Ya existe un usuario con esos datos únicos' });
+        res.status(500).json({ error: 'Error al modificar usuario' });
+    }
+});
+
+app.delete('/admin/usuarios/:id', async (req, res) => {
+    try {
+        const result = await pool.query('DELETE FROM usuarios WHERE id=$1 RETURNING id', [req.params.id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
+        res.json({ ok: true });
+    } catch (error) {
+        if (error.code === '23503') return res.status(409).json({ error: 'No se puede eliminar: el usuario está relacionado con ventas o entregas' });
+        res.status(500).json({ error: 'Error al eliminar usuario' });
+    }
+});
+
+app.get('/admin/productos', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT id_producto, nombre, tipo, precio, descripcion, stock, categoria, activo FROM productos ORDER BY id_producto ASC');
+        res.json(result.rows);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al obtener productos' });
+    }
+});
+
+app.post('/admin/productos', async (req, res) => {
+    try {
+        const { nombre, tipo, precio, descripcion, stock, categoria, activo } = req.body;
+        if (!nombre || precio === undefined || stock === undefined) return res.status(400).json({ error: 'Nombre, precio y stock son obligatorios' });
+        const result = await pool.query(
+            'INSERT INTO productos (nombre, tipo, precio, descripcion, stock, categoria, activo) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id_producto, nombre, tipo, precio, descripcion, stock, categoria, activo',
+            [nombre, tipo || null, precio, descripcion || null, stock, categoria || null, activo !== false]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al agregar producto' });
+    }
+});
+
+app.put('/admin/productos/:id', async (req, res) => {
+    try {
+        const { nombre, tipo, precio, descripcion, stock, categoria, activo } = req.body;
+        const result = await pool.query(
+            'UPDATE productos SET nombre=$1, tipo=$2, precio=$3, descripcion=$4, stock=$5, categoria=$6, activo=$7 WHERE id_producto=$8 RETURNING id_producto, nombre, tipo, precio, descripcion, stock, categoria, activo',
+            [nombre, tipo || null, precio, descripcion || null, stock, categoria || null, activo !== false, req.params.id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Producto no encontrado' });
+        res.json(result.rows[0]);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al modificar producto' });
+    }
+});
+
+app.delete('/admin/productos/:id', async (req, res) => {
+    try {
+        const result = await pool.query('DELETE FROM productos WHERE id_producto=$1 RETURNING id_producto', [req.params.id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Producto no encontrado' });
+        res.json({ ok: true });
+    } catch (error) {
+        if (error.code === '23503') return res.status(409).json({ error: 'No se puede eliminar: el producto está relacionado con ventas' });
+        res.status(500).json({ error: 'Error al eliminar producto' });
+    }
+});
+
+// ================== FIN ADMINISTRADOR ==================
+
 
 // AL FINAL DEL ARCHIVO
 server.listen(PORT, () => {
