@@ -1081,7 +1081,7 @@ app.get('/admin/resumen', async (req, res) => {
         res.status(500).json({ error: 'Error al obtener el resumen' });
     }
 });
-
+//
 app.get('/admin/clientes', async (req, res) => {
     try {
         const result = await pool.query(`
