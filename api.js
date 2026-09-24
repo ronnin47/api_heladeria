@@ -1010,6 +1010,18 @@ app.put('/updatePedidos/estado', async (req, res) => {
             });
         }
 
+
+
+          console.log(
+    '📢 SOCKET: cambiar_estado disparado. ID venta:',
+    id_venta
+);
+        // Avisar a todos los clientes que se creó un pedido
+io.emit('cambiar_estado', {
+    id_venta: id_venta
+});
+
+
         res.json(result.rows[0]);
 
     } catch (error) {
