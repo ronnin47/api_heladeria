@@ -239,7 +239,7 @@ app.get('/productos/:id', async (req, res) => {
         });
     }
 });
-
+//
 
 //endpoint para la funcion de la pantalla de pedidos de la aplicacion de cobrar y enviar a la cocina
 /*
