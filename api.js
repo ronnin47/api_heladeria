@@ -68,7 +68,6 @@ io.on('connection', (socket) => {
 
 
 
-//
 app.get('/', (req, res) => {
   res.send('Servidor funcionando y conectado a SupaBase.');
 });
@@ -104,41 +103,34 @@ app.get('/test-db', async (req, res) => {
 
 
 //.............DEV_JORGE.............
-//Endpoint 
-app.get('/usuarios', async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM usuarios');
-
-          console.log('===== USUARIOS OBTENIDOS =====');
-        console.log(result.rows);
-        console.log('==============================');
-
-        res.json(result.rows);
-
-
-
-
-
-    } catch (error) {
-        console.error('❌ Error al obtener usuarios:', error);
-
-        res.status(500).json({
-            error: 'Error al obtener los usuarios'
-        });
-    }
-});
-
 
 // Endpoint de login
 app.post('/login', async (req, res) => {
     try {
+
         const { email, pass } = req.body;
 
+
+           //valida que existe emai y pass, si no existe devuelve un error 400
         if (!email || !pass) {
             return res.status(400).json({
                 error: 'Email y contraseña son obligatorios'
+              
             });
         }
+
+    //vienen string, si no son string devuelve un error 400
+        if (typeof email !== 'string' || typeof pass !== 'string') {
+            return res.status(400).json({
+                error: 'Email y contraseña deben ser texto'
+            });
+}
+        //viene un email con formato invalido, si no tiene @ devuelve un error 400
+            if (!email.includes('@')) {
+                return res.status(400).json({
+                    error: 'El email no tiene un formato válido'
+                });
+            }
 
         const result = await pool.query(
             'SELECT * FROM usuarios WHERE email = $1 AND pass = $2',
@@ -173,12 +165,71 @@ app.post('/login', async (req, res) => {
     }
 });
 
-// Endpoint para obtener todos los productos
-app.get('/productos', async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM productos ORDER BY id_producto ASC');
 
-        res.json(result.rows);
+
+
+// Endpoint para obtener todos los productos
+app.get('/productos/:id', async (req, res) => {
+    try {
+
+        const { id } = req.params;
+
+        console.log("Id Usuario:", id);
+
+        // Validar que se haya recibido el ID
+        if (!id) {
+            return res.status(400).json({
+                error: 'ID de usuario obligatorio'
+            });
+        }
+
+        // Validar que el ID sea numérico
+        if (isNaN(id)) {
+            return res.status(400).json({
+                error: 'El ID de usuario debe ser numérico'
+            });
+        }
+
+        // Buscar usuario
+        const usuario = await pool.query(
+            'SELECT id, status FROM usuarios WHERE id = $1',
+            [id]
+        );
+
+        // Usuario inexistente
+        if (usuario.rows.length === 0) {
+            return res.status(401).json({
+                error: 'Usuario no encontrado'
+            });
+        }
+
+
+         const statusPermitidos = [
+            'cajero',
+            'produccion',
+            'repartidor',
+            'administrador'
+        ];
+
+        if (!statusPermitidos.includes(usuario.rows[0].status)) {
+            return res.status(403).json({
+                error: 'El usuario no tiene permisos para consultar productos'
+            });
+        }
+    
+
+        // Obtener productos
+        const result = await pool.query(
+            'SELECT * FROM productos ORDER BY id_producto ASC'
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: 'No se encontraron productos'
+            });
+        }
+
+        res.status(200).json(result.rows);
 
     } catch (error) {
         console.error('❌ Error al obtener productos:', error);
@@ -434,7 +485,31 @@ app.post('/insertPedido', async (req, res) => {
 });
 */
 
+/*
+app.get('/usuarios', async (req, res) => {
 
+    try {
+        const result = await pool.query('SELECT * FROM usuarios');
+
+        console.log('===== USUARIOS OBTENIDOS =====');
+        console.log(result.rows);
+        console.log('==============================');
+
+        res.json(result.rows);
+
+
+
+
+
+    } catch (error) {
+        console.error('❌ Error al obtener usuarios:', error);
+
+        res.status(500).json({
+            error: 'Error al obtener los usuarios'
+        });
+    }
+});
+*/
 
 app.post('/insertPedido', async (req, res) => {
 
