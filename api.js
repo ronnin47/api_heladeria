@@ -1002,8 +1002,27 @@ app.get('/pedidosCompletadosHoy', async (req, res) => {
 
 //-----------DEV_BRIAN----------------
 // Obtener pedidos para la pantalla de Producción
-app.get('/pedidos/produccion', async (req, res) => {
+app.get('/pedidos/produccion/:id', async (req, res) => {
     try {
+        const { id } = req.params;
+
+        if (!id) {
+            return res.status(400).json({
+                error: 'ID de usuario obligatorio'
+            });
+        }
+
+        if (isNaN(id)) {
+            return res.status(400).json({
+                error: 'El ID de usuario debe ser numérico'
+            });
+        }
+
+        const usuario = await pool.query(
+            'SELECT id, status FROM usuarios WHERE id = $1',
+            [id]
+        );
+
 
         const result = await pool.query(`
             SELECT
