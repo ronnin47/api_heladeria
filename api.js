@@ -1151,9 +1151,12 @@ app.listen(PORT, async () => {
 
 */
 // ==================== ADMINISTRADOR ====================
+// Endpoints exclusivos del panel Administrador.
+// El frontend accede a estas rutas mediante AdministradorService; las consultas y modificaciones reales se realizan acá contra PostgreSQL.
 // Endpoints exclusivos del UserControl de Administrador.
 // No modifican el contrato de los endpoints existentes.
 
+// Dashboard: calcula en la base los indicadores generales y la cantidad de pedidos por estado.
 app.get('/admin/resumen', async (req, res) => {
     try {
         const result = await pool.query(`
@@ -1176,6 +1179,7 @@ app.get('/admin/resumen', async (req, res) => {
     }
 });
 //
+// Clientes: obtiene datos asociados a ventas combinando ventas, facturas y entregas.
 app.get('/admin/clientes', async (req, res) => {
     try {
         const result = await pool.query(`
@@ -1193,6 +1197,7 @@ app.get('/admin/clientes', async (req, res) => {
     }
 });
 
+// Modifica los datos del cliente vinculados a una venta. Se usa una transacción porque actualiza facturas y entregas.
 app.put('/admin/clientes/:idVenta', async (req, res) => {
     const client = await pool.connect();
     try {
@@ -1220,6 +1225,7 @@ app.put('/admin/clientes/:idVenta', async (req, res) => {
     }
 });
 
+// PROVEEDORES: listado y operaciones CRUD utilizadas desde la sección Proveedores de Administrador.
 app.get('/admin/proveedores', async (req, res) => {
     try {
         const result = await pool.query('SELECT id_proveedor, nombre, telefono, direccion FROM proveedores ORDER BY id_proveedor ASC');
@@ -1268,6 +1274,7 @@ app.delete('/admin/proveedores/:id', async (req, res) => {
     }
 });
 
+// USUARIOS/EMPLEADOS: listado y operaciones CRUD para administrar cuentas y roles del sistema.
 app.get('/admin/usuarios', async (req, res) => {
     try {
         const result = await pool.query('SELECT id, nombre, apellido, email, pass, status, imagen FROM usuarios ORDER BY id ASC');
@@ -1318,6 +1325,7 @@ app.delete('/admin/usuarios/:id', async (req, res) => {
     }
 });
 
+// PRODUCTOS: listado y operaciones CRUD para administrar catálogo, precio, stock, categoría y estado activo.
 app.get('/admin/productos', async (req, res) => {
     try {
         const result = await pool.query('SELECT id_producto, nombre, tipo, precio, descripcion, stock, categoria, activo FROM productos ORDER BY id_producto ASC');
