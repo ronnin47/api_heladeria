@@ -1270,6 +1270,95 @@ app.get('/admin/clientes', async (req, res) => {
     }
 });
 
+
+/*
+ * ADMINISTRADOR - DETALLE DE UNA VENTA
+ * Obtiene los productos y sabores de una venta específica.
+ * No modifica información de la base de datos.
+ */
+app.get('/admin/clientes/:idVenta/detalle', async (req, res) => {
+    try {
+        const idVenta = Number(req.params.idVenta);
+
+        // Validar que el ID sea un entero positivo.
+        if (!Number.isSafeInteger(idVenta) || idVenta <= 0) {
+            return res.status(400).json({
+                error: 'El ID de venta debe ser un entero positivo'
+            });
+        }
+
+        // Comprobar que la venta exista.
+        const venta = await pool.query(
+            'SELECT id_venta FROM ventas WHERE id_venta = $1',
+            [idVenta]
+        );
+
+        if (venta.rows.length === 0) {
+            return res.status(404).json({
+                error: 'Venta no encontrada'
+            });
+        }
+
+        // Obtener cada producto y sus sabores asociados.
+        const resultado = await pool.query(`
+            SELECT
+                dv.id_detalle,
+                dv.id_producto,
+                p.nombre AS producto_nombre,
+                p.tipo AS producto_tipo,
+                vc.tipo AS vc_tipo,
+                vc.descripcion AS vc_descripcion,
+                dv.cantidad,
+                dv.precio_unitario,
+                dv.subtotal,
+
+                COALESCE(
+                    (
+                        SELECT json_agg(
+                            json_build_object(
+                                'id_sabor', s.id_sabor,
+                                'nombre', s.nombre
+                            )
+                            ORDER BY s.nombre
+                        )
+                        FROM detalles_ventas_sabores dvs
+                        INNER JOIN sabores s
+                            ON s.id_sabor = dvs.id_sabor
+                        WHERE dvs.id_detalle = dv.id_detalle
+                    ),
+                    '[]'::json
+                ) AS sabores
+
+            FROM detalles_ventas dv
+
+            LEFT JOIN productos p
+                ON p.id_producto = dv.id_producto
+
+            LEFT JOIN vasitos_cucuruchos vc
+                ON vc.id_vc = dv.id_vc
+
+            WHERE dv.id_venta = $1
+
+            ORDER BY dv.id_detalle;
+        `, [idVenta]);
+
+        return res.status(200).json({
+            id_venta: idVenta,
+            productos: resultado.rows
+        });
+
+    } catch (error) {
+        console.error(
+            'Error al obtener detalle de venta:',
+            error
+        );
+
+        return res.status(500).json({
+            error: 'Error al obtener el detalle de la venta'
+        });
+    }
+});
+
 // Modifica los datos del cliente vinculados a una venta. Se usa una transacción porque actualiza facturas y entregas.
 app.put('/admin/clientes/:idVenta', async (req, res) => {
     const client = await pool.connect();
