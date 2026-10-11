@@ -1229,6 +1229,46 @@ app.listen(PORT, async () => {
 // Endpoints exclusivos del UserControl de Administrador.
 // No modifican el contrato de los endpoints existentes.
 
+/*
+ * ADMINISTRADOR - SABORES MÁS VENDIDOS
+ * Consulta la cantidad de selecciones de cada sabor.
+ * No modifica información de la base de datos.
+ */
+app.get('/admin/sabores/mas-vendidos', async (req, res) => {
+    try {
+        const query = `
+            SELECT
+                s.id_sabor,
+                s.nombre,
+                SUM(dv.cantidad)::INTEGER AS cantidad
+            FROM detalles_ventas_sabores AS dvs
+            INNER JOIN detalles_ventas AS dv
+                ON dvs.id_detalle = dv.id_detalle
+            INNER JOIN sabores AS s
+                ON dvs.id_sabor = s.id_sabor
+            GROUP BY
+                s.id_sabor,
+                s.nombre
+            ORDER BY
+                cantidad DESC;
+        `;
+
+        const resultado = await pool.query(query);
+
+        return res.status(200).json(resultado.rows);
+
+    } catch (error) {
+        console.error(
+            'Error al obtener los sabores más vendidos:',
+            error
+        );
+
+        return res.status(500).json({
+            error: 'No se pudieron obtener los sabores más vendidos'
+        });
+    }
+});
+
 // Dashboard: calcula en la base los indicadores generales y la cantidad de pedidos por estado.
 app.get('/admin/resumen', async (req, res) => {
     try {
