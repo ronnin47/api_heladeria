@@ -239,7 +239,80 @@ app.get('/productos/:id', async (req, res) => {
         });
     }
 });
-//
+
+
+
+//Sabores
+app.get('/sabores/:id', async (req, res) => {
+    try {
+
+        const { id } = req.params;
+
+        console.log("Id Usuario:", id);
+
+        // Validar que se haya recibido el ID
+        if (!id) {
+            return res.status(400).json({
+                error: 'ID de usuario obligatorio'
+            });
+        }
+
+        // Validar que el ID sea numérico
+        if (isNaN(id)) {
+            return res.status(400).json({
+                error: 'El ID de usuario debe ser numérico'
+            });
+        }
+
+        // Buscar usuario
+        const usuario = await pool.query(
+            'SELECT id, status FROM usuarios WHERE id = $1',
+            [id]
+        );
+
+        // Usuario inexistente
+        if (usuario.rows.length === 0) {
+            return res.status(401).json({
+                error: 'Usuario no encontrado'
+            });
+        }
+
+
+         const statusPermitidos = [
+            'cajero',
+            'produccion',
+            'repartidor',
+            'administrador'
+        ];
+
+        if (!statusPermitidos.includes(usuario.rows[0].status)) {
+            return res.status(403).json({
+                error: 'El usuario no tiene permisos para consultar sabores'
+            });
+        }
+    
+
+        // Obtener productos
+        const result = await pool.query(
+            'SELECT * FROM sabores ORDER BY id_sabor ASC'
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: 'No se encontraron sabores'
+            });
+        }
+
+        res.status(200).json(result.rows);
+
+    } catch (error) {
+        console.error('❌ Error al obtener sabores:', error);
+
+        res.status(500).json({
+            error: 'Error al obtener los sabores'
+        });
+    }
+});
 
 //endpoint para la funcion de la pantalla de pedidos de la aplicacion de cobrar y enviar a la cocina
 /*
