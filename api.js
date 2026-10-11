@@ -1224,9 +1224,52 @@ app.listen(PORT, async () => {
 
 */
 // ==================== ADMINISTRADOR ====================
+// Endpoints exclusivos del panel Administrador.
+// El frontend accede a estas rutas mediante AdministradorService; las consultas y modificaciones reales se realizan acá contra PostgreSQL.
 // Endpoints exclusivos del UserControl de Administrador.
 // No modifican el contrato de los endpoints existentes.
 
+/*
+ * ADMINISTRADOR - SABORES MÁS VENDIDOS
+ * Consulta la cantidad de selecciones de cada sabor.
+ * No modifica información de la base de datos.
+ */
+app.get('/admin/sabores/mas-vendidos', async (req, res) => {
+    try {
+        const query = `
+            SELECT
+                s.id_sabor,
+                s.nombre,
+                SUM(dv.cantidad)::INTEGER AS cantidad
+            FROM detalles_ventas_sabores AS dvs
+            INNER JOIN detalles_ventas AS dv
+                ON dvs.id_detalle = dv.id_detalle
+            INNER JOIN sabores AS s
+                ON dvs.id_sabor = s.id_sabor
+            GROUP BY
+                s.id_sabor,
+                s.nombre
+            ORDER BY
+                cantidad DESC;
+        `;
+
+        const resultado = await pool.query(query);
+
+        return res.status(200).json(resultado.rows);
+
+    } catch (error) {
+        console.error(
+            'Error al obtener los sabores más vendidos:',
+            error
+        );
+
+        return res.status(500).json({
+            error: 'No se pudieron obtener los sabores más vendidos'
+        });
+    }
+});
+
+// Dashboard: calcula en la base los indicadores generales y la cantidad de pedidos por estado.
 app.get('/admin/resumen', async (req, res) => {
     try {
         const result = await pool.query(`
@@ -1249,6 +1292,7 @@ app.get('/admin/resumen', async (req, res) => {
     }
 });
 //
+// Clientes: obtiene datos asociados a ventas combinando ventas, facturas y entregas.
 app.get('/admin/clientes', async (req, res) => {
     try {
         const result = await pool.query(`
@@ -1266,6 +1310,96 @@ app.get('/admin/clientes', async (req, res) => {
     }
 });
 
+
+/*
+ * ADMINISTRADOR - DETALLE DE UNA VENTA
+ * Obtiene los productos y sabores de una venta específica.
+ * No modifica información de la base de datos.
+ */
+app.get('/admin/clientes/:idVenta/detalle', async (req, res) => {
+    try {
+        const idVenta = Number(req.params.idVenta);
+
+        // Validar que el ID sea un entero positivo.
+        if (!Number.isSafeInteger(idVenta) || idVenta <= 0) {
+            return res.status(400).json({
+                error: 'El ID de venta debe ser un entero positivo'
+            });
+        }
+
+        // Comprobar que la venta exista.
+        const venta = await pool.query(
+            'SELECT id_venta FROM ventas WHERE id_venta = $1',
+            [idVenta]
+        );
+
+        if (venta.rows.length === 0) {
+            return res.status(404).json({
+                error: 'Venta no encontrada'
+            });
+        }
+
+        // Obtener cada producto y sus sabores asociados.
+        const resultado = await pool.query(`
+            SELECT
+                dv.id_detalle,
+                dv.id_producto,
+                p.nombre AS producto_nombre,
+                p.tipo AS producto_tipo,
+                vc.tipo AS vc_tipo,
+                vc.descripcion AS vc_descripcion,
+                dv.cantidad,
+                dv.precio_unitario,
+                dv.subtotal,
+
+                COALESCE(
+                    (
+                        SELECT json_agg(
+                            json_build_object(
+                                'id_sabor', s.id_sabor,
+                                'nombre', s.nombre
+                            )
+                            ORDER BY s.nombre
+                        )
+                        FROM detalles_ventas_sabores dvs
+                        INNER JOIN sabores s
+                            ON s.id_sabor = dvs.id_sabor
+                        WHERE dvs.id_detalle = dv.id_detalle
+                    ),
+                    '[]'::json
+                ) AS sabores
+
+            FROM detalles_ventas dv
+
+            LEFT JOIN productos p
+                ON p.id_producto = dv.id_producto
+
+            LEFT JOIN vasitos_cucuruchos vc
+                ON vc.id_vc = dv.id_vc
+
+            WHERE dv.id_venta = $1
+
+            ORDER BY dv.id_detalle;
+        `, [idVenta]);
+
+        return res.status(200).json({
+            id_venta: idVenta,
+            productos: resultado.rows
+        });
+
+    } catch (error) {
+        console.error(
+            'Error al obtener detalle de venta:',
+            error
+        );
+
+        return res.status(500).json({
+            error: 'Error al obtener el detalle de la venta'
+        });
+    }
+});
+
+// Modifica los datos del cliente vinculados a una venta. Se usa una transacción porque actualiza facturas y entregas.
 app.put('/admin/clientes/:idVenta', async (req, res) => {
     const client = await pool.connect();
     try {
@@ -1293,6 +1427,7 @@ app.put('/admin/clientes/:idVenta', async (req, res) => {
     }
 });
 
+// PROVEEDORES: listado y operaciones CRUD utilizadas desde la sección Proveedores de Administrador.
 app.get('/admin/proveedores', async (req, res) => {
     try {
         const result = await pool.query('SELECT id_proveedor, nombre, telefono, direccion FROM proveedores ORDER BY id_proveedor ASC');
@@ -1341,6 +1476,7 @@ app.delete('/admin/proveedores/:id', async (req, res) => {
     }
 });
 
+// USUARIOS/EMPLEADOS: listado y operaciones CRUD para administrar cuentas y roles del sistema.
 app.get('/admin/usuarios', async (req, res) => {
     try {
         const result = await pool.query('SELECT id, nombre, apellido, email, pass, status, imagen FROM usuarios ORDER BY id ASC');
@@ -1391,6 +1527,7 @@ app.delete('/admin/usuarios/:id', async (req, res) => {
     }
 });
 
+// PRODUCTOS: listado y operaciones CRUD para administrar catálogo, precio, stock, categoría y estado activo.
 app.get('/admin/productos', async (req, res) => {
     try {
         const result = await pool.query('SELECT id_producto, nombre, tipo, precio, descripcion, stock, categoria, activo FROM productos ORDER BY id_producto ASC');
