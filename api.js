@@ -1187,7 +1187,8 @@ app.put('/updatePedidos/estado', async (req, res) => {
 );
         // Avisar a todos los clientes que se creó un pedido
 io.emit('cambiar_estado', {
-    id_venta: id_venta
+    id_venta: id_venta,
+    estado: result.rows[0].estado //ahora le mandamos el estado actualizado para que el front pueda actualizarlo en tiempo real
 });
 
 
