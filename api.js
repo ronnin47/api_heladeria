@@ -866,6 +866,7 @@ app.get('/pedidosActivos', async (req, res) => {
                 f.nombre AS cliente_nombre,
 
                 e.direccion,
+                e.telefono,
                 e.estado AS estado_entrega,
 
                 COALESCE(
@@ -930,6 +931,7 @@ app.get('/pedidosActivos', async (req, res) => {
                 v.medio_pago,
                 f.nombre,
                 e.direccion,
+                e.telefono,
                 e.estado
 
             ORDER BY v.id_venta DESC;
