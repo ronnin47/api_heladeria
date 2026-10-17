@@ -1160,7 +1160,8 @@ app.get('/pedidos/produccion/:id', async (req, res) => {
 
 
 
-// UPDATEAR ESTADO EN LA TABLA DE VENTAS
+
+ // UPDATEAR ESTADO EN LA TABLA DE VENTAS
 app.put('/updatePedidos/estado', async (req, res) => {
     try {
 
@@ -1170,7 +1171,7 @@ app.put('/updatePedidos/estado', async (req, res) => {
             UPDATE ventas
             SET estado = $1
             WHERE id_venta = $2
-            RETURNING id_venta, estado;
+            RETURNING id_venta, estado, tipo_entrega;
         `, [estado, id_venta]);
 
         if (result.rows.length === 0) {
@@ -1179,15 +1180,14 @@ app.put('/updatePedidos/estado', async (req, res) => {
             });
         }
 
+        console.log(
+            '📢 SOCKET: cambiar_estado disparado. ID venta:',
+            id_venta
+        );
 
-
-          console.log(
-    '📢 SOCKET: cambiar_estado disparado. ID venta:',
-    id_venta
-);
-        // Avisar a todos los clientes que se creó un pedido
-   io.emit('cambiar_estado', {
-            id_venta: id_venta,
+        // Avisar a todos los clientes que cambió el estado del pedido
+        io.emit('cambiar_estado', {
+            id_venta: result.rows[0].id_venta,
             estado: result.rows[0].estado,
             tipo_entrega: result.rows[0].tipo_entrega
         });
