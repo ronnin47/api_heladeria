@@ -1186,11 +1186,11 @@ app.put('/updatePedidos/estado', async (req, res) => {
     id_venta
 );
         // Avisar a todos los clientes que se creó un pedido
-io.emit('cambiar_estado', {
-    id_venta: id_venta,
-    estado: result.rows[0].estado //ahora le mandamos el estado actualizado para que el front pueda actualizarlo en tiempo real
-});
-
+   io.emit('cambiar_estado', {
+            id_venta: id_venta,
+            estado: result.rows[0].estado,
+            tipo_entrega: result.rows[0].tipo_entrega
+        });
 
         res.json(result.rows[0]);
 
