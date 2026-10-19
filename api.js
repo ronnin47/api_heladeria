@@ -1272,6 +1272,212 @@ app.get('/admin/sabores/mas-vendidos', async (req, res) => {
     }
 });
 
+/*
+ * ADMINISTRADOR - INFORME DE VENTAS
+ * Obtiene las ventas registradas entre dos fechas.
+ * Incluye ambos días completos y no modifica la base de datos.
+ */
+app.get('/admin/reportes/ventas', async (req, res) => {
+    try {
+        const { desde, hasta } = req.query;
+
+        // Validar el formato y la existencia real de las fechas.
+        const fechaValida = (fecha) => {
+            if (typeof fecha !== 'string' ||
+                !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+                return false;
+            }
+
+            const fechaUTC = new Date(`${fecha}T00:00:00Z`);
+
+            return !Number.isNaN(fechaUTC.getTime()) &&
+                fechaUTC.toISOString().slice(0, 10) === fecha;
+        };
+
+        if (!fechaValida(desde) || !fechaValida(hasta)) {
+            return res.status(400).json({
+                error: 'Las fechas deben ser válidas y tener formato YYYY-MM-DD'
+            });
+        }
+
+        if (desde > hasta) {
+            return res.status(400).json({
+                error: 'La fecha inicial no puede superar la fecha final'
+            });
+        }
+
+        // Consulta parametrizada: incluye ambas fechas completas.
+        const resultado = await pool.query(`
+            SELECT
+                id_venta,
+                fecha,
+                TO_CHAR(fecha, 'YYYY-MM-DD') AS fecha_local,
+                total,
+                estado,
+                medio_pago
+            FROM ventas
+            WHERE fecha >= ($1::date::timestamp AT TIME ZONE 'America/Argentina/Buenos_Aires')
+            AND fecha < (($2::date + INTERVAL '1 day')::timestamp AT TIME ZONE 'America/Argentina/Buenos_Aires')
+            ORDER BY fecha ASC, id_venta ASC;
+        `, [desde, hasta]);
+
+        // Calcular estadísticas sin excluir estados silenciosamente.
+        const ventas = resultado.rows;
+        
+        // Productos vendidos durante el período seleccionado.
+        const resultadoProductos = await pool.query(`
+            SELECT
+                p.id_producto,
+                p.nombre AS producto,
+                SUM(dv.cantidad) AS cantidad_vendida,
+                SUM(dv.subtotal) AS importe_total
+            FROM detalles_ventas dv
+            INNER JOIN ventas v
+                ON v.id_venta = dv.id_venta
+            INNER JOIN productos p
+                ON p.id_producto = dv.id_producto
+            WHERE v.fecha >= $1::date
+              AND v.fecha < ($2::date + INTERVAL '1 day')
+            GROUP BY p.id_producto, p.nombre
+            ORDER BY cantidad_vendida DESC, p.nombre ASC
+        `, [desde, hasta]);
+
+        // Sabores elegidos durante el mismo período.
+        const resultadoSabores = await pool.query(`
+            SELECT
+                s.id_sabor,
+                s.nombre AS sabor,
+                COUNT(*) AS veces_elegido
+            FROM detalles_ventas_sabores dvs
+            INNER JOIN detalles_ventas dv
+                ON dv.id_detalle = dvs.id_detalle
+            INNER JOIN ventas v
+                ON v.id_venta = dv.id_venta
+            INNER JOIN sabores s
+                ON s.id_sabor = dvs.id_sabor
+            WHERE v.fecha >= $1::date
+              AND v.fecha < ($2::date + INTERVAL '1 day')
+            GROUP BY s.id_sabor, s.nombre
+            ORDER BY veces_elegido DESC, s.nombre ASC
+        `, [desde, hasta]);
+        
+        // Convertir los valores numéricos de PostgreSQL.
+        const productosVendidos = resultadoProductos.rows.map(p => ({
+            id_producto: p.id_producto,
+            producto: p.producto,
+            cantidad_vendida: Number(p.cantidad_vendida),
+            importe_total: Number(p.importe_total)
+        }));
+
+        const saboresVendidos = resultadoSabores.rows.map(s => ({
+            id_sabor: s.id_sabor,
+            sabor: s.sabor,
+            veces_elegido: Number(s.veces_elegido)
+        }));
+
+        const totalSeleccionesSabores = saboresVendidos.reduce(
+            (total, sabor) => total + sabor.veces_elegido,
+            0
+        );
+
+
+
+        const totalRegistrado = ventas.reduce(
+            (suma, venta) => suma + Number(venta.total || 0),
+            0
+        );
+
+        const cantidadVentas = ventas.length;
+        
+        // Agrupar ventas por medio de pago.
+        const ventasPorMedioPago = {};
+
+        // Agrupar ventas por día, usando la fecha local argentina.
+        const ventasPorDia = {};
+
+
+        for (const venta of ventas) {
+            const importe = Number(venta.total || 0);
+            const medioPago = venta.medio_pago || 'Sin especificar';
+
+            if (!ventasPorMedioPago[medioPago]) {
+                ventasPorMedioPago[medioPago] = {
+                    cantidad: 0,
+                    importe: 0
+                };
+            }
+
+            ventasPorMedioPago[medioPago].cantidad++;
+            ventasPorMedioPago[medioPago].importe += importe;
+
+            const fechaLocal = venta.fecha_local;
+
+            if (!ventasPorDia[fechaLocal]) {
+                ventasPorDia[fechaLocal] = {
+                    cantidad: 0,
+                    importe: 0
+                };
+            }
+
+            ventasPorDia[fechaLocal].cantidad++;
+            ventasPorDia[fechaLocal].importe += importe;
+        }
+
+        // Redondear importes a dos decimales.
+        for (const grupo of [
+            ventasPorMedioPago,
+            ventasPorDia
+        ]) {
+            for (const datos of Object.values(grupo)) {
+                datos.importe = Number(datos.importe.toFixed(2));
+            }
+        }
+
+
+        const ventasPorEstado = {};
+
+        for (const venta of ventas) {
+            const estado = venta.estado || 'Sin estado';
+
+            if (!ventasPorEstado[estado]) {
+                ventasPorEstado[estado] = {
+                    cantidad: 0,
+                    importe: 0
+                };
+            }
+
+            ventasPorEstado[estado].cantidad++;
+            ventasPorEstado[estado].importe += Number(venta.total || 0);
+        }
+
+        return res.status(200).json({
+            periodo: { desde, hasta },
+            resumen: {
+                cantidadVentas,
+                totalRegistrado: Number(totalRegistrado.toFixed(2)),
+                ticketPromedio: cantidadVentas > 0
+                    ? Number((totalRegistrado / cantidadVentas).toFixed(2))
+                    : 0,
+                ventasPorEstado,
+                ventasPorMedioPago,
+                ventasPorDia,
+                totalSeleccionesSabores
+            },
+            productosVendidos,
+            saboresVendidos,
+            ventas
+        });
+
+
+    } catch (error) {
+        console.error('Error al generar informe de ventas:', error);
+
+        return res.status(500).json({
+            error: 'No se pudo obtener el informe de ventas'
+        });
+    }
+});
+
 // Dashboard: calcula en la base los indicadores generales y la cantidad de pedidos por estado.
 app.get('/admin/resumen', async (req, res) => {
     try {
