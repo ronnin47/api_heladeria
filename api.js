@@ -1208,24 +1208,7 @@ app.put('/updatePedidos/estado', async (req, res) => {
 });
 
 
-/*
 
-app.listen(PORT, async () => {
-    console.log(`🟢 Servidor corriendo en puerto ${PORT}`);
-
-    try {
-        const respuesta = await fetch(`http://localhost:${PORT}/pedidosCompletadosHoy`);
-        const datos = await respuesta.json();
-
-        console.log("📦 Pedidos completados hoy:");
-        console.log(datos);
-
-    } catch (error) {
-        console.error("❌ Error al consultar pedidos completados hoy:", error);
-    }
-});
-
-*/
 // ==================== ADMINISTRADOR ====================
 // Endpoints exclusivos del panel Administrador.
 // El frontend accede a estas rutas mediante AdministradorService; las consultas y modificaciones reales se realizan acá contra PostgreSQL.
